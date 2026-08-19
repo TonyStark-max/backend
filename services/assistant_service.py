@@ -432,6 +432,45 @@ def process_chat_message(
     # Call Gemini API exclusively
     gemini_reply = _call_gemini_api(message, history_list, context)
 
+    if not gemini_reply:
+        import urllib.parse
+        encoded_query = urllib.parse.quote(message)
+        google_search_url = f"https://www.google.com/search?q={encoded_query}"
+        
+        snippet = None
+        try:
+            import httpx
+            import re
+            import html
+            ddg_url = f"https://html.duckduckgo.com/html/?q={encoded_query}"
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36)"}
+            with httpx.Client(timeout=10.0) as client:
+                res = client.get(ddg_url, headers=headers)
+                matches = re.findall(r'<a class="result__snippet[^>]*>(.*?)</a>', res.text, re.IGNORECASE | re.DOTALL)
+                for m in matches:
+                    clean = re.sub(r'<[^>]+>', '', m).strip()
+                    clean = html.unescape(clean)
+                    if len(clean) > 20:
+                        snippet = clean
+                        break
+        except Exception:
+            pass
+
+        if snippet:
+            gemini_reply = (
+                f"### 🌐 Web Search Result\n\n"
+                f"{snippet}\n\n"
+                f"*Source: [Google Search]({google_search_url})*\n\n"
+                f"---\n*Note: Our AI is currently busy (Rate Limit Exceeded), so we fetched this directly from the web for you!*"
+            )
+        else:
+            gemini_reply = (
+                "### ⚠️ AI Assistant is Currently Busy\n\n"
+                "We are currently experiencing high traffic and the AI has temporarily reached its rate limit. "
+                "However, you can easily find the answer to your question directly on Google:\n\n"
+                f"🔍 **[Search Google for: \"{message}\"]({google_search_url})**"
+            )
+
     suggestions = [
         "What documents are required for quick approval?",
         "How does my CIBIL score affect interest rates?",
@@ -439,7 +478,7 @@ def process_chat_message(
     ]
     
     return {
-        "reply": gemini_reply if gemini_reply else "### ❌ Error\n\nUnable to connect to the Gemini API. Please check your internet connection or API key.",
+        "reply": gemini_reply,
         "suggestions": suggestions,
         "model": "google-gemini",
         "status": "success",
