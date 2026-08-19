@@ -314,80 +314,58 @@ DEFAULT_SUGGESTIONS = [
 ]
 
 
-def _call_gemini_api(message: str, history: List[dict], context: Optional[dict] = None) -> Optional[str]:
+def _call_groq_api(message: str, history: List[dict], context: Optional[dict] = None) -> Optional[str]:
     """
-    Directly queries Google Gemini LLM via official Generative Language REST API.
-    Supports GEMINI_API_KEY or GOOGLE_API_KEY environment variables.
+    Queries Groq's high-speed inference API using Llama 3 models.
+    Requires GROQ_API_KEY environment variable.
     """
-    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    if not api_key or api_key == "your_gemini_api_key_here":
-        return "### ⚠️ Configuration Required\n\nTo use the AI Assistant, you must add your **GEMINI_API_KEY** to the `.env` file or environment variables in your deployment dashboard."
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key or api_key == "your_groq_api_key_here":
+        return None # Gracefully fallback to web search if key is missing
 
-    # Supported fast model endpoints
     models_to_try = [
-        "gemini-1.5-flash-8b",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
-        "gemini-1.0-pro"
+        "llama-3.1-8b-instant",
+        "llama3-8b-8192",
+        "gemma2-9b-it"
     ]
 
-    # Inject Knowledge Base into System Instruction
-    full_system = SYSTEM_INSTRUCTION + "\n\nPre-defined Knowledge Base (Always use this exact info when asked about these topics):\n"
+    full_system = SYSTEM_INSTRUCTION + "\n\nPre-defined Knowledge Base:\n"
     for kb in KNOWLEDGE_BASE:
         full_system += f"- {kb['reply']}\n"
 
     if context:
         full_system += f"\n\nApplicant Financial Context:\n{json.dumps(context, indent=2)}"
 
-    # Merge consecutive messages with the same role to strictly alternate
-    raw_contents = []
+    formatted_history = [{"role": "system", "content": full_system}]
     for item in history[-6:]:
-        role = "user" if item.get("role") == "user" else "model"
-        raw_contents.append({"role": role, "text": item.get("content", "")})
+        role = "user" if item.get("role") == "user" else "assistant"
+        formatted_history.append({"role": role, "content": item.get("content", "")})
     
-    raw_contents.append({"role": "user", "text": message})
-
-    contents = []
-    for item in raw_contents:
-        if contents and contents[-1]["role"] == item["role"]:
-            contents[-1]["parts"][0]["text"] += "\n\n" + item["text"]
-        else:
-            contents.append({
-                "role": item["role"],
-                "parts": [{"text": item["text"]}]
-            })
+    formatted_history.append({"role": "user", "content": message})
 
     payload = {
-        "systemInstruction": {
-            "parts": [{"text": full_system}]
-        },
-        "contents": contents,
-        "generationConfig": {
-            "temperature": 0.4,
-            "topP": 0.9,
-            "maxOutputTokens": 1024,
-        },
-        "tools": [
-            {"googleSearch": {}}
-        ]
+        "messages": formatted_history,
+        "temperature": 0.4,
+        "max_tokens": 1024
+    }
+
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
     }
 
     for model_name in models_to_try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+        payload["model"] = model_name
         try:
             with httpx.Client(timeout=30.0) as client:
-                response = client.post(url, json=payload)
+                response = client.post(url, json=payload, headers=headers)
                 if response.status_code == 200:
                     resp_data = response.json()
-                    candidates = resp_data.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        if parts:
-                            return parts[0].get("text", "").strip()
-                else:
-                    print(f"Gemini API HTTP Error {response.status_code} for model {model_name}: {response.text}")
-        except Exception as e:
-            print(f"Gemini API Error for model {model_name}: {e}")
+                    choices = resp_data.get("choices", [])
+                    if choices:
+                        return choices[0].get("message", {}).get("content", "").strip()
+        except Exception:
             continue
 
     return None
@@ -429,13 +407,12 @@ def process_chat_message(
                     "status": "success",
                 }
 
-    # Call Gemini API exclusively
-    gemini_reply = _call_gemini_api(message, history_list, context)
+    # Call Groq API explicitly
+    llm_reply = _call_groq_api(message, history_list, context)
 
-    if not gemini_reply:
+    if not llm_reply:
         import urllib.parse
         encoded_query = urllib.parse.quote(message)
-        google_search_url = f"https://www.google.com/search?q={encoded_query}"
         
         snippet = None
         try:
@@ -457,9 +434,9 @@ def process_chat_message(
             pass
 
         if snippet:
-            gemini_reply = snippet
+            llm_reply = snippet
         else:
-            gemini_reply = "I am currently experiencing high traffic and have temporarily reached my rate limit. Please try asking again in a few minutes!"
+            llm_reply = "I couldn't find a direct answer to that right now. Please try rephrasing your question."
 
     suggestions = [
         "What documents are required for quick approval?",
@@ -468,9 +445,9 @@ def process_chat_message(
     ]
     
     return {
-        "reply": gemini_reply,
+        "reply": llm_reply,
         "suggestions": suggestions,
-        "model": "google-gemini",
+        "model": "groq-llama3",
         "status": "success",
     }
 

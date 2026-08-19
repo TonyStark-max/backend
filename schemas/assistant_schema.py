@@ -36,7 +36,7 @@ class ChatResponse(BaseModel):
         default=[],
         description="Suggested follow-up queries or quick topics",
     )
-    model: str = "google-gemini"
+    model: str = "groq-llama3"
     status: str = "success"
 
 
