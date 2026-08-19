@@ -325,10 +325,10 @@ def _call_gemini_api(message: str, history: List[dict], context: Optional[dict] 
 
     # Supported fast model endpoints
     models_to_try = [
-        "gemini-3.5-flash",
-        "gemini-3.6-flash",
-        "gemini-flash-latest",
-        "gemini-omni-flash-preview"
+        "gemini-1.5-flash-8b",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
+        "gemini-1.0-pro"
     ]
 
     # Inject Knowledge Base into System Instruction
@@ -457,19 +457,9 @@ def process_chat_message(
             pass
 
         if snippet:
-            gemini_reply = (
-                f"### 🌐 Web Search Result\n\n"
-                f"{snippet}\n\n"
-                f"*Source: [Google Search]({google_search_url})*\n\n"
-                f"---\n*Note: Our AI is currently busy (Rate Limit Exceeded), so we fetched this directly from the web for you!*"
-            )
+            gemini_reply = snippet
         else:
-            gemini_reply = (
-                "### ⚠️ AI Assistant is Currently Busy\n\n"
-                "We are currently experiencing high traffic and the AI has temporarily reached its rate limit. "
-                "However, you can easily find the answer to your question directly on Google:\n\n"
-                f"🔍 **[Search Google for: \"{message}\"]({google_search_url})**"
-            )
+            gemini_reply = "I am currently experiencing high traffic and have temporarily reached my rate limit. Please try asking again in a few minutes!"
 
     suggestions = [
         "What documents are required for quick approval?",
