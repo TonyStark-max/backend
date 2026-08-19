@@ -1,0 +1,12 @@
+pandas
+numpy
+opencv-python-headless
+scikit-learn==1.6.1
+joblib
+fastapi
+uvicorn
+pytest
+httpx
+shap
+python-dotenv>=1.0.0
+google-genai>=2.3.0
